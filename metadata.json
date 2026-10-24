@@ -1,0 +1,8 @@
+{
+  "name": "EduNexus AI",
+  "description": "Student Success & Journey Intelligence Platform synthesizing 7 campus telemetry domains with explainable risk and cohort segmentation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

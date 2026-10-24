@@ -1,0 +1,164 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Hardened Primitives
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == request.auth.uid && data.uid == userId && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.role is string && data.role in ['advisor', 'faculty', 'student', 'evaluator']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCloudIntervention(data) {
+      return data.keys().hasAll([
+          'authorUid',
+          'studentId',
+          'title',
+          'interventionType',
+          'priority',
+          'status',
+          'description',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'authorUid',
+          'studentId',
+          'title',
+          'interventionType',
+          'priority',
+          'status',
+          'description',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.authorUid is string && data.authorUid == request.auth.uid && data.authorUid.size() <= 128
+        && data.studentId is string && data.studentId.size() >= 1 && data.studentId.size() <= 64 && data.studentId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 160
+        && data.interventionType is string && data.interventionType.size() >= 1 && data.interventionType.size() <= 64
+        && data.priority is string && data.priority in ['low', 'medium', 'high', 'urgent']
+        && data.status is string && data.status in ['planned', 'in_progress', 'under_review', 'completed']
+        && data.description is string && data.description.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCopilotSession(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'title',
+          'modelTier',
+          'lastMessagePreview',
+          'messageCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'title',
+          'modelTier',
+          'lastMessagePreview',
+          'messageCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.ownerUid is string && data.ownerUid == request.auth.uid && data.ownerUid.size() <= 128
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.modelTier is string && data.modelTier in ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-4-argon']
+        && data.lastMessagePreview is string && data.lastMessagePreview.size() <= 500
+        && data.messageCount is int && data.messageCount >= 0 && data.messageCount <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Collection 1: /users/{userId} (PII Isolated to strict owner)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().role == 'advisor'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().role == existing().role
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // Collection 2: /interventions/{interventionId}
+    match /interventions/{interventionId} {
+      allow get: if isSignedIn() && isValidId(interventionId) && existing().authorUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.authorUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(interventionId)
+        && isValidCloudIntervention(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(interventionId)
+        && isValidCloudIntervention(incoming())
+        && existing().authorUid == request.auth.uid
+        && existing().status != 'completed'
+        && incoming().authorUid == existing().authorUid
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'priority', 'status', 'description', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(interventionId) && existing().authorUid == request.auth.uid;
+    }
+
+    // Collection 3: /copilot_sessions/{sessionId}
+    match /copilot_sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && existing().ownerUid == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidCopilotSession(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(sessionId)
+        && isValidCopilotSession(incoming())
+        && existing().ownerUid == request.auth.uid
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'modelTier', 'lastMessagePreview', 'messageCount', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(sessionId) && existing().ownerUid == request.auth.uid;
+    }
+  }
+}

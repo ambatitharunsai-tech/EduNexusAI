@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" class="dark" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduNexus AI</title>
+    <meta name="description" content="Student Success & Journey Intelligence Platform synthesizing 7 campus telemetry domains with explainable risk and cohort segmentation." />
+    <meta property="og:title" content="EduNexus AI" />
+    <meta property="og:description" content="Student Success & Journey Intelligence Platform synthesizing 7 campus telemetry domains with explainable risk and cohort segmentation." />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('edunexus_theme') || localStorage.getItem('edunexus_theme_preference') || 'dark';
+          var theme = (saved === 'light') ? 'light' : 'dark';
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.dataset.themePreference = theme;
+          document.documentElement.classList.remove('dark', 'light');
+          document.documentElement.classList.add(theme);
+          document.documentElement.style.colorScheme = theme;
+          document.documentElement.style.backgroundColor = (theme === 'dark') ? '#09090B' : '#F5F5F5';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
